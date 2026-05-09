@@ -52,29 +52,39 @@
         </div>
 
         <igx-grid
-          [data]="workbook()?.items ?? []"
+          [data]="gridRows()"
           [autoGenerate]="false"
-          [height]="'520px'"
+          [height]="'620px'"
           [allowFiltering]="true"
-          [rowSelection]="'single'"
+          [rowSelection]="'none'"
+          displayDensity="compact"
+          [rowHeight]="'32px'"
         >
-          <igx-column field="itemCode" header="Item" [width]="'140px'"></igx-column>
-          <igx-column field="brand" header="Brand" [width]="'150px'"></igx-column>
-          <igx-column field="category" header="Category" [width]="'140px'"></igx-column>
-          <igx-column field="type" header="Type" [width]="'130px'"></igx-column>
-          <igx-column field="size" header="Size" [width]="'110px'"></igx-column>
-          <igx-column field="retailPrice" header="Retail" dataType="number" [width]="'110px'">
-          </igx-column>
-          <igx-column field="forecastTotal" header="Forecast" dataType="number" [width]="'120px'">
-          </igx-column>
-          <igx-column field="shipmentHistoryTotal" header="Shipments" dataType="number" [width]="'120px'">
-          </igx-column>
-          <igx-column field="forecastHistoryTotal" header="History" dataType="number" [width]="'120px'">
-          </igx-column>
-          <igx-column header="Open" [width]="'110px'" [filterable]="false">
+          <igx-column header="" [width]="'72px'" [filterable]="false" [sortable]="false" [pinned]="true">
             <ng-template igxCell let-cell="cell">
-              <button igxButton="flat" type="button" (click)="selectItem(cell.row.data)">Select</button>
+              <button class="select-row-button" igxButton="flat" type="button" (click)="selectItem(cell.row.data.sourceItem)">
+                Select
+              </button>
             </ng-template>
+          </igx-column>
+          <igx-column field="itemCode" header="Item" [width]="'140px'" [pinned]="true"></igx-column>
+          @for (column of itemSheetColumns(); track column.field) {
+            <igx-column
+              [field]="column.field"
+              [header]="column.header"
+              [dataType]="column.dataType"
+              [width]="'150px'"
+            ></igx-column>
+          }
+          @for (column of forecastColumns(); track column) {
+            <igx-column
+              [field]="column"
+              [header]="column"
+              dataType="number"
+              [width]="'120px'"
+            ></igx-column>
+          }
+          <igx-column field="forecastTotal" header="Forecast Total" dataType="number" [width]="'140px'">
           </igx-column>
         </igx-grid>
       </div>

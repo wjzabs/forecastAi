@@ -1,15 +1,65 @@
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import express from 'express';
 import multer from 'multer';
+import OpenAI from 'openai';
 import { read, utils } from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 const port = process.env.PORT || 3100;
+const openAiModel = process.env.OPENAI_MODEL || 'gpt-4.1';
+const systemPromptPath = path.resolve(__dirname, '../prompts/forecast-finding-system.md');
+const findingJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['item', 'monthYear', 'considerations', 'recommendations'],
+  properties: {
+    item: { type: 'string' },
+    monthYear: { type: 'string' },
+    considerations: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 5,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['description', 'impact'],
+        properties: {
+          description: { type: 'string' },
+          impact: { type: 'integer', minimum: -3, maximum: 3 }
+        }
+      }
+    },
+    recommendations: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 5,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['description', 'impact'],
+        properties: {
+          description: { type: 'string' },
+          impact: { type: 'integer', minimum: -3, maximum: 3 }
+        }
+      }
+    }
+  }
+};
 
 const workbooks = new Map();
 const jobs = new Map();
+let openAiClient;
+let cachedSystemPrompt;
 
 app.use(cors({ origin: 'http://localhost:4200' }));
 app.use(express.json({ limit: '2mb' }));
@@ -148,6 +198,7 @@ function parseWorkbook(sourceFileName, buffer) {
   const shipmentRows = readSheetRows(workbook, 'Shipments History');
   const forecastRows = readSheetRows(workbook, 'Forecasts');
   const forecastHistoryRows = readSheetRows(workbook, 'Forecast History');
+  const itemSheetColumns = createItemSheetColumns(itemsRows);
 
   const shipmentByItem = rowsByItemCode(shipmentRows);
   const forecastByItem = rowsByItemCode(forecastRows);
@@ -156,13 +207,17 @@ function parseWorkbook(sourceFileName, buffer) {
   const shipmentColumns = getMonthColumns(shipmentRows, 'S');
   const historyColumns = getMonthColumns(forecastHistoryRows, 'H');
 
-  const items = itemsRows
-    .filter((row) => normalizeItemCode(row[0]))
-    .map((row) => {
-      const itemCode = normalizeItemCode(row[0]);
+  const itemRowsByCode = rowsByItemCode(itemsRows);
+  const allItemCodes = uniqueValues([
+    ...itemRowsByCode.keys(),
+    ...forecastByItem.keys()
+  ]);
+
+  const items = allItemCodes.map((itemCode) => {
+      const row = itemRowsByCode.get(itemCode);
       const metadata = {};
 
-      for (const [key, value] of Object.entries(row.__metadata ?? {})) {
+      for (const [key, value] of Object.entries(row?.__metadata ?? {})) {
         metadata[key] = value ?? '';
       }
 
@@ -175,24 +230,42 @@ function parseWorkbook(sourceFileName, buffer) {
         shipmentHistoryUnits: numericCell(shipment?.record[shipmentColumns[index]?.key]),
         forecastHistoryUnits: numericCell(history?.record[historyColumns[index]?.key])
       }));
+      const forecastSheetValues = Object.fromEntries(
+        forecastMonths.map((column) => [column.key, numericCell(forecast?.record[column.key])])
+      );
 
-      const retailPrice = numericCell(metadata['Retail Price']);
+      const retailPrice = numericCell(findMetadataValue(metadata, ['Retail Price', 'Retail']));
+      const itemSheetValues = Object.fromEntries(
+        itemSheetColumns.map((column) => [column.field, row?.record?.[column.header] ?? ''])
+      );
 
       return {
         itemCode,
-        brand: textCell(metadata.Brand),
-        category: textCell(metadata.Category),
-        gender: textCell(metadata.Gender),
-        type: textCell(metadata.Type),
-        size: textCell(metadata.Size),
-        description: textCell(metadata.Description),
+        brand: textCell(findMetadataValue(metadata, ['Brand'])),
+        category: textCell(findMetadataValue(metadata, ['Category'])),
+        gender: textCell(findMetadataValue(metadata, ['Gender'])),
+        type: textCell(findMetadataValue(metadata, ['Type'])),
+        size: textCell(findMetadataValue(metadata, ['Size'])),
+        description: textCell(findMetadataValue(metadata, ['Description'])),
         retailPrice,
+        personalities: textCell(findMetadataValue(metadata, ['Personalities'])),
+        color: textCell(findMetadataValue(metadata, ['Color'])),
+        scent: textCell(findMetadataValue(metadata, ['Scent'])),
         metadata,
+        itemSheetValues,
+        forecastSheetValues,
+        hasForecastRecord: Boolean(forecast),
         forecastTotal: monthlyMetrics.reduce((sum, metric) => sum + metric.forecastUnits, 0),
         shipmentHistoryTotal: monthlyMetrics.reduce((sum, metric) => sum + metric.shipmentHistoryUnits, 0),
         forecastHistoryTotal: monthlyMetrics.reduce((sum, metric) => sum + metric.forecastHistoryUnits, 0),
         monthlyMetrics
       };
+    }).sort((left, right) => {
+      if (left.hasForecastRecord !== right.hasForecastRecord) {
+        return left.hasForecastRecord ? -1 : 1;
+      }
+
+      return left.itemCode.localeCompare(right.itemCode);
     });
 
   if (items.length === 0) {
@@ -206,11 +279,13 @@ function parseWorkbook(sourceFileName, buffer) {
     sourceFileName,
     forecastStartMonth,
     uploadedAt: new Date().toISOString(),
+    itemSheetColumns,
     items,
     summary: {
       itemCount: items.length,
       forecastMonthCount: months.length,
       forecastMonths: months,
+      forecastColumns: forecastMonths.map((column) => column.key),
       sheetNames: requiredSheets
     }
   };
@@ -258,7 +333,44 @@ function readSheetRows(workbook, sheetName) {
     const result = [...row];
     result.record = record;
     result.__metadata = metadata;
+    result.__headers = headers.map((header, index) => textCell(header) || `Column${index + 1}`);
     return result;
+  });
+}
+
+function createItemSheetColumns(itemsRows) {
+  const headers = itemsRows[0]?.__headers ?? [];
+
+  return headers.slice(1).map((header, index) => ({
+    header: toPascalCaseHeader(header),
+    sourceHeader: header,
+    field: `itemColumn${index}`,
+    dataType: hasNumericValue(itemsRows, header) ? 'number' : 'string'
+  }));
+}
+
+function toPascalCaseHeader(value) {
+  const words = textCell(value)
+    .trim()
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return textCell(value);
+  }
+
+  return words
+    .map((word) => {
+      const normalized = word.toLowerCase();
+      return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+    })
+    .join('');
+}
+
+function hasNumericValue(rows, header) {
+  return rows.some((row) => {
+    const value = row.record?.[header];
+    return value !== '' && value !== null && value !== undefined && Number.isFinite(Number(value));
   });
 }
 
@@ -274,6 +386,10 @@ function rowsByItemCode(rows) {
   }
 
   return result;
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function getMonthColumns(rows, prefix) {
@@ -322,12 +438,35 @@ function numericCell(value) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+function findMetadataValue(metadata, aliases) {
+  const normalizedEntries = Object.entries(metadata).map(([key, value]) => [
+    normalizeHeaderName(key),
+    value
+  ]);
+
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeHeaderName(alias);
+    const match = normalizedEntries.find(([key]) => key === normalizedAlias);
+
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return '';
+}
+
+function normalizeHeaderName(value) {
+  return textCell(value).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function toWorkbookResponse(workbook) {
   return {
     id: workbook.id,
     sourceFileName: workbook.sourceFileName,
     forecastStartMonth: workbook.forecastStartMonth,
     uploadedAt: workbook.uploadedAt,
+    itemSheetColumns: workbook.itemSheetColumns,
     summary: workbook.summary,
     items: workbook.items
   };
@@ -342,7 +481,8 @@ function toJobResponse(job) {
     totalTasks: job.totalTasks,
     completedTasks: job.completedTasks,
     createdAt: job.createdAt,
-    updatedAt: job.updatedAt
+    updatedAt: job.updatedAt,
+    errorMessage: job.errorMessage
   };
 }
 
@@ -368,73 +508,169 @@ async function runAiJob(jobId) {
   job.updatedAt = new Date().toISOString();
 
   for (const [index, task] of tasks.entries()) {
-    await delay(35);
-    job.findings.push(createPocFinding(task.item, task.metric, job.userContext));
-    job.completedTasks = index + 1;
-    job.progress = Math.round((job.completedTasks / job.totalTasks) * 100);
-    job.updatedAt = new Date().toISOString();
+    try {
+      job.findings.push(await createOpenAiFinding(task.item, task.metric, job.userContext, workbook));
+      job.completedTasks = index + 1;
+      job.progress = Math.round((job.completedTasks / job.totalTasks) * 100);
+      job.updatedAt = new Date().toISOString();
+    } catch (error) {
+      job.status = 'failed';
+      job.errorMessage = error.message;
+      job.updatedAt = new Date().toISOString();
+      return;
+    }
   }
 
   job.status = 'complete';
   job.progress = 100;
   job.updatedAt = new Date().toISOString();
+  console.log({job})
 }
 
-function createPocFinding(item, metric, userContext) {
-  const deltaVsShipments = metric.forecastUnits - metric.shipmentHistoryUnits;
-  const deltaVsHistory = metric.forecastUnits - metric.forecastHistoryUnits;
-  const netDirection = Math.sign(deltaVsShipments + deltaVsHistory);
-  const priceContext = item.retailPrice <= 0
-    ? 'This appears to be a sample or tester item, so demand may be tied to counter support and promotional strategy rather than direct retail sales.'
-    : `Retail price is ${item.retailPrice}, so recommendations should consider price sensitivity and giftability.`;
-  const blindSpot = textCell(userContext.blindSpots).trim();
-
-  return {
-    item: item.itemCode,
-    monthYear: metric.month,
-    considerations: [
+async function createOpenAiFinding(item, metric, userContext, workbook) {
+  const response = await getOpenAiClient().responses.create({
+    model: openAiModel,
+    input: [
       {
-        description: `${item.brand || 'This brand'} ${item.category || 'fragrance'} forecast is ${formatDelta(deltaVsShipments)} versus shipment history and ${formatDelta(deltaVsHistory)} versus prior forecast history.`,
-        impact: clampImpact(netDirection)
+        role: 'system',
+        content: await getSystemPrompt()
       },
       {
-        description: priceContext,
-        impact: item.retailPrice <= 0 ? 1 : 0
-      },
-      {
-        description: blindSpot
-          ? `User-requested blind spot to evaluate: ${blindSpot}`
-          : 'Review seasonal retail events, brand activity, celebrity affiliations, regional disruption, and department store traffic for this month before finalizing demand.',
-        impact: 0
+        role: 'user',
+        content: JSON.stringify(createForecastFindingInput(item, metric, userContext, workbook), null, 2)
       }
     ],
-    recommendations: [
+    tools: [
       {
-        description: item.retailPrice <= 0
-          ? 'Coordinate tester and sample quantities with the sellable fragrance forecast so promotional support arrives before the retail demand window.'
-          : 'Compare this item against adjacent brand/category items and flag unusually high or low forecast movement before committing purchase orders.',
-        impact: item.retailPrice <= 0 ? 2 : 1
-      },
-      {
-        description: 'Use product metadata such as brand, gender, type, size, color, ingredient, and description to search for external trend signals before making a manual forecast adjustment.',
-        impact: 1
+        type: 'web_search',
+        user_location: {
+          type: 'approximate',
+          country: 'US',
+          timezone: 'America/New_York'
+        }
       }
-    ]
+    ],
+    tool_choice: 'auto',
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'forecast_finding',
+        strict: true,
+        schema: findingJsonSchema
+      }
+    }
+  });
+
+  const finding = parseOpenAiJsonResponse(response);
+  return normalizeFinding(finding, item.itemCode, metric.month);
+}
+
+function createForecastFindingInput(item, metric, userContext, workbook) {
+  return {
+    task: 'Create one normalized forecast finding for this item and month. Return JSON only.',
+    workbook: {
+      sourceFileName: workbook.sourceFileName,
+      forecastStartMonth: workbook.forecastStartMonth,
+      forecastMonths: workbook.summary.forecastMonths
+    },
+    item: {
+      itemCode: item.itemCode,
+      itemAttributes: item.metadata,
+      normalizedAttributes: {
+        brand: item.brand,
+        category: item.category,
+        gender: item.gender,
+        type: item.type,
+        size: item.size,
+        description: item.description,
+        retailPrice: item.retailPrice,
+        personalities: item.personalities,
+        color: item.color,
+        scent: item.scent
+      }
+    },
+    monthMetric: {
+      monthYear: metric.month,
+      forecastUnits: metric.forecastUnits,
+      shipmentHistoryUnits: metric.shipmentHistoryUnits,
+      forecastHistoryUnits: metric.forecastHistoryUnits,
+      deltaVsShipmentHistoryUnits: metric.forecastUnits - metric.shipmentHistoryUnits,
+      deltaVsForecastHistoryUnits: metric.forecastUnits - metric.forecastHistoryUnits
+    },
+    userContext: {
+      forecastingMethod: textCell(userContext.forecastingMethod),
+      knownAssumptions: textCell(userContext.knownAssumptions),
+      knownPromotionsOrConstraints: textCell(userContext.knownPromotionsOrConstraints),
+      blindSpots: textCell(userContext.blindSpots),
+      regionMarketNotes: textCell(userContext.regionMarketNotes)
+    }
   };
 }
 
-function formatDelta(delta) {
-  if (delta === 0) {
-    return 'flat';
+function getOpenAiClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured.');
   }
 
-  return delta > 0 ? `${delta} units higher` : `${Math.abs(delta)} units lower`;
+  if (!openAiClient) {
+    openAiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+
+  return openAiClient;
+}
+
+async function getSystemPrompt() {
+  if (!cachedSystemPrompt) {
+    cachedSystemPrompt = await readFile(systemPromptPath, 'utf8');
+  }
+
+  return cachedSystemPrompt;
+}
+
+function parseOpenAiJsonResponse(response) {
+  const outputText = response.output_text || collectResponseText(response);
+
+  if (!outputText) {
+    throw new Error('OpenAI returned an empty forecast finding response.');
+  }
+
+  try {
+    return JSON.parse(outputText);
+  } catch (error) {
+    throw new Error(`OpenAI returned invalid JSON: ${error.message}`);
+  }
+}
+
+function collectResponseText(response) {
+  return (response.output ?? [])
+    .flatMap((outputItem) => outputItem.content ?? [])
+    .filter((contentItem) => contentItem.type === 'output_text' && contentItem.text)
+    .map((contentItem) => contentItem.text)
+    .join('');
+}
+
+function normalizeFinding(finding, itemCode, monthYear) {
+  return {
+    item: textCell(finding.item) || itemCode,
+    monthYear: textCell(finding.monthYear) || monthYear,
+    considerations: normalizeFindingEntries(finding.considerations),
+    recommendations: normalizeFindingEntries(finding.recommendations)
+  };
+}
+
+function normalizeFindingEntries(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => ({
+      description: textCell(entry?.description).trim(),
+      impact: clampImpact(Number(entry?.impact))
+    }))
+    .filter((entry) => entry.description);
 }
 
 function clampImpact(value) {
-  return Math.max(-3, Math.min(3, value));
-}
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
 
-function delay(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  return Math.max(-3, Math.min(3, Math.round(value)));
 }

@@ -18,11 +18,24 @@ export interface ForecastItem {
   size: string;
   description: string;
   retailPrice: number;
+  personalities: string;
+  color: string;
+  scent: string;
   metadata: Record<string, string | number>;
+  itemSheetValues: Record<string, string | number>;
+  forecastSheetValues: Record<string, number>;
+  hasForecastRecord: boolean;
   forecastTotal: number;
   shipmentHistoryTotal: number;
   forecastHistoryTotal: number;
   monthlyMetrics: MonthlyMetric[];
+}
+
+export interface ItemSheetColumn {
+  header: string;
+  sourceHeader: string;
+  field: string;
+  dataType: 'string' | 'number';
 }
 
 export interface WorkbookResponse {
@@ -30,10 +43,12 @@ export interface WorkbookResponse {
   sourceFileName: string;
   forecastStartMonth: string;
   uploadedAt: string;
+  itemSheetColumns: ItemSheetColumn[];
   summary: {
     itemCount: number;
     forecastMonthCount: number;
     forecastMonths: string[];
+    forecastColumns?: string[];
     sheetNames: string[];
   };
   items: ForecastItem[];
@@ -48,6 +63,7 @@ export interface AiJob {
   completedTasks: number;
   createdAt: string;
   updatedAt: string;
+  errorMessage?: string;
 }
 
 export interface AiFinding {

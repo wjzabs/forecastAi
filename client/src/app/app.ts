@@ -17,9 +17,15 @@ import {
   AiUserContext,
   ForecastApiService,
   ForecastItem,
+  ItemSheetColumn,
   MonthlyMetric,
   WorkbookResponse
 } from './forecast-api.service';
+
+type ForecastGridRow = Record<string, ForecastItem | string | number> & {
+  itemCode: string;
+  sourceItem: ForecastItem;
+};
 
 @Component({
   selector: 'app-root',
@@ -57,6 +63,24 @@ export class App implements OnDestroy {
   };
 
   private pollHandle?: number;
+
+  protected readonly itemSheetColumns = computed<ItemSheetColumn[]>(() =>
+    this.workbook()?.itemSheetColumns ?? []
+  );
+
+  protected readonly gridRows = computed<ForecastGridRow[]>(() =>
+    (this.workbook()?.items ?? []).map((item) => ({
+      itemCode: item.itemCode,
+      sourceItem: item,
+      ...item.itemSheetValues,
+      ...item.forecastSheetValues,
+      forecastTotal: item.forecastTotal
+    }))
+  );
+
+  protected readonly forecastColumns = computed(() =>
+    this.workbook()?.summary.forecastColumns ?? []
+  );
 
   protected readonly chartData = computed(() =>
     this.selectedMetrics().map((metric) => ({
@@ -190,6 +214,12 @@ export class App implements OnDestroy {
 
           if (job.status === 'complete' || job.status === 'failed') {
             this.stopPolling();
+
+            if (job.status === 'failed') {
+              this.errorMessage.set(job.errorMessage ?? 'AI-assisted forecasting failed.');
+              return;
+            }
+
             this.loadFindings(jobId);
           }
         },
