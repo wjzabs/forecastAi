@@ -1,0 +1,213 @@
+<main class="shell">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Fragrance distributor forecast POC</p>
+      <h1>AI-assisted sales forecasting</h1>
+    </div>
+    <label class="upload-button" [class.disabled]="isUploading()">
+      <input type="file" accept=".xls,.xlsx" (change)="uploadWorkbook($event)" />
+      {{ isUploading() ? 'Uploading...' : 'Upload workbook' }}
+    </label>
+  </header>
+
+  @if (errorMessage()) {
+    <section class="alert">{{ errorMessage() }}</section>
+  }
+
+  @if (!workbook()) {
+    <section class="empty-state">
+      <h2>Start with a forecast workbook</h2>
+      <p>
+        Upload a workbook named like <strong>Forecasts202505.xls</strong>. The API will parse
+        items, shipments history, forecasts, and forecast history from row 2 headers.
+      </p>
+    </section>
+  } @else {
+    <section class="summary-grid">
+      <article>
+        <span>Workbook</span>
+        <strong>{{ workbook()?.sourceFileName }}</strong>
+      </article>
+      <article>
+        <span>Items</span>
+        <strong>{{ workbook()?.summary?.itemCount }}</strong>
+      </article>
+      <article>
+        <span>Forecast months</span>
+        <strong>{{ workbook()?.summary?.forecastMonthCount }}</strong>
+      </article>
+      <article>
+        <span>Start month</span>
+        <strong>{{ formatMonth(workbook()?.forecastStartMonth ?? '') }}</strong>
+      </article>
+    </section>
+
+    <section class="workspace">
+      <div class="grid-panel">
+        <div class="section-heading">
+          <div>
+            <h2>Forecast Items</h2>
+            <p>Select an item to compare forecast, shipments, and prior forecast history.</p>
+          </div>
+        </div>
+
+        <igx-grid
+          [data]="workbook()?.items ?? []"
+          [autoGenerate]="false"
+          [height]="'520px'"
+          [allowFiltering]="true"
+          [rowSelection]="'single'"
+        >
+          <igx-column field="itemCode" header="Item" [width]="'140px'"></igx-column>
+          <igx-column field="brand" header="Brand" [width]="'150px'"></igx-column>
+          <igx-column field="category" header="Category" [width]="'140px'"></igx-column>
+          <igx-column field="type" header="Type" [width]="'130px'"></igx-column>
+          <igx-column field="size" header="Size" [width]="'110px'"></igx-column>
+          <igx-column field="retailPrice" header="Retail" dataType="number" [width]="'110px'">
+          </igx-column>
+          <igx-column field="forecastTotal" header="Forecast" dataType="number" [width]="'120px'">
+          </igx-column>
+          <igx-column field="shipmentHistoryTotal" header="Shipments" dataType="number" [width]="'120px'">
+          </igx-column>
+          <igx-column field="forecastHistoryTotal" header="History" dataType="number" [width]="'120px'">
+          </igx-column>
+          <igx-column header="Open" [width]="'110px'" [filterable]="false">
+            <ng-template igxCell let-cell="cell">
+              <button igxButton="flat" type="button" (click)="selectItem(cell.row.data)">Select</button>
+            </ng-template>
+          </igx-column>
+        </igx-grid>
+      </div>
+
+      <aside class="detail-panel">
+        @if (selectedItem()) {
+          <div class="selected-header">
+            <div>
+              <span>{{ selectedItem()?.brand || 'No brand' }}</span>
+              <h2>{{ selectedItem()?.itemCode }}</h2>
+              <p>{{ selectedItem()?.description || 'No description provided' }}</p>
+            </div>
+            <button igxButton="raised" type="button" (click)="openAiDialog()">AI-Assisted Forecasting</button>
+          </div>
+
+          <igx-category-chart
+            class="forecast-chart"
+            [dataSource]="chartData()"
+            chartType="Line"
+            xAxisLabel="month"
+            [height]="'330px'"
+            [width]="'100%'"
+            [isHorizontalZoomEnabled]="true"
+          >
+          </igx-category-chart>
+
+          <section class="metrics-strip">
+            <article>
+              <span>Forecast total</span>
+              <strong>{{ selectedItem()?.forecastTotal }}</strong>
+            </article>
+            <article>
+              <span>Shipment history</span>
+              <strong>{{ selectedItem()?.shipmentHistoryTotal }}</strong>
+            </article>
+            <article>
+              <span>Forecast history</span>
+              <strong>{{ selectedItem()?.forecastHistoryTotal }}</strong>
+            </article>
+          </section>
+
+          @if (aiJob()) {
+            <section class="job-panel">
+              <div>
+                <h3>AI job: {{ aiJob()?.status }}</h3>
+                <p>{{ aiJob()?.completedTasks }} of {{ aiJob()?.totalTasks }} item-month tasks</p>
+              </div>
+              <igx-linear-bar [value]="aiJob()?.progress ?? 0"></igx-linear-bar>
+            </section>
+          }
+
+          @if (selectedFindings().length > 0) {
+            <section class="findings">
+              <h3>Normalized AI Findings</h3>
+              @for (finding of selectedFindings(); track trackFinding($index, finding)) {
+                <article class="finding">
+                  <header>
+                    <strong>{{ formatMonth(finding.monthYear) }}</strong>
+                    <span>{{ finding.item }}</span>
+                  </header>
+                  <div class="finding-lists">
+                    <div>
+                      <h4>Considerations</h4>
+                      @for (consideration of finding.considerations; track consideration.description) {
+                        <p>
+                          <span [class.positive]="consideration.impact > 0" [class.negative]="consideration.impact < 0">
+                            {{ consideration.impact }}
+                          </span>
+                          {{ consideration.description }}
+                        </p>
+                      }
+                    </div>
+                    <div>
+                      <h4>Recommendations</h4>
+                      @for (recommendation of finding.recommendations; track recommendation.description) {
+                        <p>
+                          <span [class.positive]="recommendation.impact > 0" [class.negative]="recommendation.impact < 0">
+                            {{ recommendation.impact }}
+                          </span>
+                          {{ recommendation.description }}
+                        </p>
+                      }
+                    </div>
+                  </div>
+                </article>
+              }
+            </section>
+          }
+        }
+      </aside>
+    </section>
+  }
+</main>
+
+<igx-dialog #aiDialog title="AI-Assisted Forecasting">
+  <form class="ai-form" (ngSubmit)="startAiJob()">
+    <p>
+      Describe how this forecast was prepared and what context should shape the AI review. The
+      POC runs asynchronously and returns normalized item-month considerations and recommendations.
+    </p>
+
+    <igx-input-group type="box">
+      <label igxLabel>Forecasting method</label>
+      <textarea igxInput name="forecastingMethod" [(ngModel)]="userContext.forecastingMethod"></textarea>
+    </igx-input-group>
+
+    <igx-input-group type="box">
+      <label igxLabel>Assumptions already considered</label>
+      <textarea igxInput name="knownAssumptions" [(ngModel)]="userContext.knownAssumptions"></textarea>
+    </igx-input-group>
+
+    <igx-input-group type="box">
+      <label igxLabel>Promotions, retailer events, or constraints</label>
+      <textarea
+        igxInput
+        name="knownPromotionsOrConstraints"
+        [(ngModel)]="userContext.knownPromotionsOrConstraints"
+      ></textarea>
+    </igx-input-group>
+
+    <igx-input-group type="box">
+      <label igxLabel>Blind spots to check</label>
+      <textarea igxInput name="blindSpots" [(ngModel)]="userContext.blindSpots"></textarea>
+    </igx-input-group>
+
+    <igx-input-group type="box">
+      <label igxLabel>Region or market notes</label>
+      <textarea igxInput name="regionMarketNotes" [(ngModel)]="userContext.regionMarketNotes"></textarea>
+    </igx-input-group>
+
+    <div igxDialogActions>
+      <button igxButton="flat" type="button" (click)="aiDialog.close()">Cancel</button>
+      <button igxButton="raised" type="submit" [disabled]="isStartingAi()">Run analysis</button>
+    </div>
+  </form>
+</igx-dialog>

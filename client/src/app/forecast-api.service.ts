@@ -1,0 +1,110 @@
+import { HttpClient } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+
+export interface MonthlyMetric {
+  month: string;
+  forecastUnits: number;
+  shipmentHistoryUnits: number;
+  forecastHistoryUnits: number;
+}
+
+export interface ForecastItem {
+  itemCode: string;
+  brand: string;
+  category: string;
+  gender: string;
+  type: string;
+  size: string;
+  description: string;
+  retailPrice: number;
+  metadata: Record<string, string | number>;
+  forecastTotal: number;
+  shipmentHistoryTotal: number;
+  forecastHistoryTotal: number;
+  monthlyMetrics: MonthlyMetric[];
+}
+
+export interface WorkbookResponse {
+  id: string;
+  sourceFileName: string;
+  forecastStartMonth: string;
+  uploadedAt: string;
+  summary: {
+    itemCount: number;
+    forecastMonthCount: number;
+    forecastMonths: string[];
+    sheetNames: string[];
+  };
+  items: ForecastItem[];
+}
+
+export interface AiJob {
+  id: string;
+  workbookId: string;
+  status: 'pending' | 'running' | 'complete' | 'failed';
+  progress: number;
+  totalTasks: number;
+  completedTasks: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiFinding {
+  item: string;
+  monthYear: string;
+  considerations: FindingEntry[];
+  recommendations: FindingEntry[];
+}
+
+export interface FindingEntry {
+  description: string;
+  impact: number;
+}
+
+export interface AiUserContext {
+  forecastingMethod: string;
+  knownAssumptions: string;
+  knownPromotionsOrConstraints: string;
+  blindSpots: string;
+  regionMarketNotes: string;
+}
+
+@Injectable({ providedIn: 'root' })
+export class ForecastApiService {
+  private readonly baseUrl = 'http://localhost:3100/api';
+
+  constructor(private readonly http: HttpClient) {}
+
+  uploadWorkbook(file: File): Observable<WorkbookResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<WorkbookResponse>(`${this.baseUrl}/workbooks`, formData);
+  }
+
+  getItemMetrics(workbookId: string, itemCode: string): Observable<MonthlyMetric[]> {
+    return this.http.get<MonthlyMetric[]>(
+      `${this.baseUrl}/workbooks/${workbookId}/items/${encodeURIComponent(itemCode)}/metrics`
+    );
+  }
+
+  startAiJob(
+    workbookId: string,
+    itemCodes: string[],
+    userContext: AiUserContext
+  ): Observable<AiJob> {
+    return this.http.post<AiJob>(`${this.baseUrl}/workbooks/${workbookId}/ai-jobs`, {
+      scope: { itemCodes },
+      userContext
+    });
+  }
+
+  getAiJob(jobId: string): Observable<AiJob> {
+    return this.http.get<AiJob>(`${this.baseUrl}/ai-jobs/${jobId}`);
+  }
+
+  getAiFindings(jobId: string): Observable<AiFinding[]> {
+    return this.http.get<AiFinding[]>(`${this.baseUrl}/ai-jobs/${jobId}/findings`);
+  }
+}
