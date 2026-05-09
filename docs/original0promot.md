@@ -22,7 +22,7 @@ This document preserves the original project prompt that started the sales forec
 
 > The POC part of this, though, is how I'd like to integrate AI into this.
 
-> Generally, I'd consider a salesforecast to be a form of impossible future-telling. Anybody can get close, but it's largely a seasonally-informed guess!
+> The app should be built with Angular, and use igniteUI components for all UI controls, grids, chartes, etc.
 
 >
 
