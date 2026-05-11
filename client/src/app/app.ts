@@ -22,8 +22,9 @@ import {
   WorkbookResponse
 } from './forecast-api.service';
 
-type ForecastGridRow = Record<string, ForecastItem | string | number> & {
+type ForecastGridRow = Record<string, boolean | ForecastItem | string | number> & {
   itemCode: string;
+  isSelected: boolean;
   sourceItem: ForecastItem;
 };
 
@@ -61,6 +62,9 @@ export class App implements OnDestroy {
     blindSpots: '',
     regionMarketNotes: ''
   };
+  protected readonly rowClasses = {
+    'selected-grid-row': (row: { data?: ForecastGridRow }) => Boolean(row.data?.isSelected)
+  };
 
   private pollHandle?: number;
 
@@ -68,15 +72,18 @@ export class App implements OnDestroy {
     this.workbook()?.itemSheetColumns ?? []
   );
 
-  protected readonly gridRows = computed<ForecastGridRow[]>(() =>
-    (this.workbook()?.items ?? []).map((item) => ({
+  protected readonly gridRows = computed<ForecastGridRow[]>(() => {
+    const selectedItemCode = this.selectedItem()?.itemCode;
+
+    return (this.workbook()?.items ?? []).map((item) => ({
       itemCode: item.itemCode,
+      isSelected: item.itemCode === selectedItemCode,
       sourceItem: item,
       ...item.itemSheetValues,
       ...item.forecastSheetValues,
       forecastTotal: item.forecastTotal
-    }))
-  );
+    }));
+  });
 
   protected readonly forecastColumns = computed(() =>
     this.workbook()?.summary.forecastColumns ?? []

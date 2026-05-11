@@ -1,0 +1,5 @@
+basic pro-ration of LY data, with uplift %
+seasonality, model forecast to another item for items marked for specific calendar events like mother's day, valentine's day, and christmas
+the EDP items are featured in friends and family flyers mailed to specific regions
+personalities who have news or sentiment, fashion trends based on color or scent
+monthly unit forecasts provided are for US Department stores only.

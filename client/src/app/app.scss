@@ -153,9 +153,38 @@ h1 {
   margin-bottom: 0;
 }
 
+.select-action-cell {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
 .select-row-button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
   min-height: 24px;
   padding: 0 6px;
+  width: 100%;
+}
+
+.select-row-button-label {
+  display: block;
+  text-align: center;
+  width: 100%;
+}
+
+:host ::ng-deep .select-row-button .igx-button__content {
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+}
+
+:host ::ng-deep .selected-grid-row,
+:host ::ng-deep .selected-grid-row .igx-grid__td {
+  background: #dcfce7 !important;
 }
 
 .selected-header {

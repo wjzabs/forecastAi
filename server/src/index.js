@@ -236,7 +236,7 @@ function parseWorkbook(sourceFileName, buffer) {
 
       const retailPrice = numericCell(findMetadataValue(metadata, ['Retail Price', 'Retail']));
       const itemSheetValues = Object.fromEntries(
-        itemSheetColumns.map((column) => [column.field, row?.record?.[column.header] ?? ''])
+        itemSheetColumns.map((column) => [column.field, row?.record?.[column.sourceHeader] ?? ''])
       );
 
       return {

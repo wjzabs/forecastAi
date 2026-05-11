@@ -1,0 +1,127 @@
+prepare a context summary that I can pass to a new agent
+10:00 AM
+
+
+Use this context for the new agent:
+
+Workspace: C:\Projects\forecasting-ai-example
+Shell: PowerShell
+Current repo visible to Codex has frontend/backend directories, not client/server, even though IDE tabs show client/server paths.
+
+Project structure observed:
+- Angular app: frontend/
+- Express API: backend/server.js
+- Python reference/AI helpers: app/
+- Docs: docs/
+- Tests: tests/
+
+Recent user goals and work done:
+1. Startup guidance:
+   - Express: npm run api or npm start from repo root
+   - Angular: npm run frontend from repo root
+   - Angular URL: http://localhost:4200
+   - Express URL: http://127.0.0.1:3000
+
+2. Angular animations runtime error:
+   - Error: NG03600 AnimationBuilder injected but animations not enabled.
+   - Changed frontend/src/main.ts to add provideAnimations() directly in bootstrapApplication.
+   - Removed provideAnimations() from frontend/src/app/app.config.ts to avoid duplicate provider source.
+
+3. Ignite grid issues:
+   - User wanted row selector checkboxes removed.
+   - Month/value columns to right of item were blank.
+   - Filter font icons not rendering properly.
+   - Changes applied:
+     - frontend/src/app/app.ts:
+       - Added ForecastMonthColumn interface.
+       - Added forecastMonthColumns computed.
+       - Month fields now use sanitized keys like month_2026_05 instead of raw YYYY-MM.
+       - Added gridCellValue(row, field).
+     - frontend/src/app/app.html:
+       - Month columns now iterate forecastMonthColumns().
+       - Headers still show original month string.
+       - Explicit igxCell template renders gridCellValue().
+     - frontend/src/styles.css:
+       - Added stronger igx-icon CSS for Material Icons ligatures.
+       - Added CSS to hide row selector/selection checkbox elements.
+
+4. Metadata columns for AI search:
+   - User said they added 3 columns to the Items sheet in forecast workbook for item metadata, to be used in AI search for events, sentiment analysis, and news.
+   - Important caveat: visible repo currently does not parse Excel workbooks or an Items sheet. Active README says web app uses Express API with CSV uploads and deterministic demo AI. Python AI helpers are reference/test code.
+   - Changes applied anyway to wire a consistent metadata contract:
+     - app/ai.py:
+       - Added ITEM_METADATA_ALIASES mapping for events/sentiment/news.
+       - Added item_search_metadata(product).
+       - load_forecast_payload now includes ai_search_metadata per product.
+       - request_openai_findings payload includes metadata_usage instructions.
+     - app/prompts/ai_researcher.md:
+       - Added instructions to use ai_search_metadata.events, .sentiment, .news as item-specific search guidance.
+     - backend/server.js:
+       - Seed products now include aiSearchMetadata with events/sentiment/news example terms.
+       - seeded state stores ai_search_metadata.
+       - chartPayload exposes profile.aiSearchMetadata.
+       - parseForecastCsv reads common metadata column aliases:
+         events/event_metadata/events_metadata/event_search_metadata/events_search_metadata/event_search_terms/events_search_terms
+         sentiment/sentiment_metadata/sentiment_search_metadata/sentiment_search_terms
+         news/news_metadata/news_search_metadata/news_search_terms
+       - applyForecastCsv merges parsed metadata into product.ai_search_metadata.
+     - frontend/src/app/forecast-api.ts:
+       - ForecastProduct.profile now optionally includes aiSearchMetadata { events, sentiment, news }.
+     - tests/test_ai.py:
+       - Added test_item_search_metadata_reads_workbook_metadata_aliases.
+
+Verification done:
+- node --check backend\server.js passed.
+- python -m pytest tests\test_ai.py tests\test_csv_forecasts.py failed because pytest is not installed.
+- npm --prefix frontend run build could not be verified earlier because frontend/node_modules/@angular/build was missing.
+
+Current git status includes modifications:
+- app/ai.py
+- app/prompts/ai_researcher.md
+- backend/server.js
+- frontend/src/app/app.config.ts
+- frontend/src/app/app.html
+- frontend/src/app/app.ts
+- frontend/src/app/forecast-api.ts
+- frontend/src/main.ts
+- frontend/src/styles.css
+- tests/test_ai.py
+- untracked express.err.log and express.log
+
+Potential mismatch/blocker:
+- User IDE shows files like client/package.json, client/src/app/app.config.ts, server/src/index.js, server/package.json, docs/implementation-plan.md.
+- Codex workspace listing does not show client/ or server/ directories. It only shows frontend/ and backend/. New agent should first verify current directory and file tree. If client/server truly exist elsewhere, switch to the correct workspace before applying more changes.
+
+Recommended next steps:
+1. Run Get-Location and rg --files -g "package.json" -g "main.ts" -g "index.js" to confirm actual app directories.
+2. If the real app is client/server, port the already-described changes from frontend/backend to client/server.
+3. If workbook parsing exists in server/src/index.js or another server file, wire the Items sheet metadata columns into the AI request payload using this shape:
+   ai_search_metadata: {
+     events: "...",
+     sentiment: "...",
+     news: "..."
+   }
+4. Confirm exact workbook column names from docs/implementation-plan.md or the parser; current implementation supports common aliases but may need exact names.
+
+
+
+
+10:00 AM
+
+I have added 3 columns to provide meta data to each item in the Items sheet in the forecast workbook.  These new columns should be used in the ai search for events, sentiment analysis, and news.
+
+remove row selector checkboxes from the grid.. Also, values for all of the columns to the right of the item are not showing up.  Also, the font icon appearing in the filters are not rendering properly.
+
+
+
+basic pro-ration of LY data, with uplift %
+seasonality, model forecast to another item for items marked for specific calendar events like mother's day, valentine's day, and christmas
+the EDP items are featured in friends and family flyers mailed to specific regions
+personalities who have news or sentiment, fashion trends based on color or scent
+monthly unit forecasts provided are for US Department stores only.
+
+
+
+
+
+

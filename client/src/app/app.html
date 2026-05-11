@@ -57,14 +57,17 @@
           [height]="'620px'"
           [allowFiltering]="true"
           [rowSelection]="'none'"
+          [rowClasses]="rowClasses"
           displayDensity="compact"
           [rowHeight]="'32px'"
         >
           <igx-column header="" [width]="'72px'" [filterable]="false" [sortable]="false" [pinned]="true">
             <ng-template igxCell let-cell="cell">
-              <button class="select-row-button" igxButton="flat" type="button" (click)="selectItem(cell.row.data.sourceItem)">
-                Select
-              </button>
+              <div class="select-action-cell">
+                <button class="select-row-button" igxButton="flat" type="button" (click)="selectItem(cell.row.data.sourceItem)">
+                  <span class="select-row-button-label">Select</span>
+                </button>
+              </div>
             </ng-template>
           </igx-column>
           <igx-column field="itemCode" header="Item" [width]="'140px'" [pinned]="true"></igx-column>
