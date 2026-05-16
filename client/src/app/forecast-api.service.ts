@@ -88,7 +88,9 @@ export interface AiUserContext {
 
 @Injectable({ providedIn: 'root' })
 export class ForecastApiService {
-  private readonly baseUrl = 'http://localhost:3100/api';
+  private readonly baseUrlexpress = 'http://localhost:3100/api';
+  // private readonly baseUrl = 'https://absapi.absolution1.com/api';
+  private readonly baseUrl = 'http://localhost:1977/api';
 
   constructor(private readonly http: HttpClient) {}
 
@@ -96,12 +98,12 @@ export class ForecastApiService {
     const formData = new FormData();
     formData.append('file', file);
 
-    return this.http.post<WorkbookResponse>(`${this.baseUrl}/workbooks`, formData);
+    return this.http.post<WorkbookResponse>(`${this.baseUrlexpress}/workbooks`, formData);
   }
 
   getItemMetrics(workbookId: string, itemCode: string): Observable<MonthlyMetric[]> {
     return this.http.get<MonthlyMetric[]>(
-      `${this.baseUrl}/workbooks/${workbookId}/items/${encodeURIComponent(itemCode)}/metrics`
+      `${this.baseUrlexpress}/workbooks/${workbookId}/items/${encodeURIComponent(itemCode)}/metrics`
     );
   }
 
@@ -110,17 +112,21 @@ export class ForecastApiService {
     itemCodes: string[],
     userContext: AiUserContext
   ): Observable<AiJob> {
-    return this.http.post<AiJob>(`${this.baseUrl}/workbooks/${workbookId}/ai-jobs`, {
+    console.log({workbookId, itemCodes, userContext})
+        // return this.http.post<AiJob>(`${this.baseUrl}/workbooks/${workbookId}/ai-jobs`, {
+    return this.http.post<AiJob>(`${this.baseUrlexpress}/workbooks/${workbookId}/ai-jobs`, {
       scope: { itemCodes },
       userContext
     });
   }
 
   getAiJob(jobId: string): Observable<AiJob> {
-    return this.http.get<AiJob>(`${this.baseUrl}/ai-jobs/${jobId}`);
+    // return this.http.get<AiJob>(`${this.baseUrl}/ai-jobs/${jobId}`);
+    return this.http.get<AiJob>(`${this.baseUrlexpress}/ai-jobs/${jobId}`);
   }
 
   getAiFindings(jobId: string): Observable<AiFinding[]> {
-    return this.http.get<AiFinding[]>(`${this.baseUrl}/ai-jobs/${jobId}/findings`);
+    // return this.http.get<AiFinding[]>(`${this.baseUrl}/ai-jobs/${jobId}/findings`);
+    return this.http.get<AiFinding[]>(`${this.baseUrlexpress}/ai-jobs/${jobId}/findings`);    
   }
 }

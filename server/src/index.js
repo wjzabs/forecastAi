@@ -123,6 +123,9 @@ app.get('/api/workbooks/:id/items/:itemCode/metrics', (req, res) => {
   res.json(item.monthlyMetrics);
 });
 
+
+// http://localhost:1977/api/workbooks/05a8fc1d-6662-4ab0-af3a-1770bda1b4f4/ai-jobs
+
 app.post('/api/workbooks/:id/ai-jobs', (req, res) => {
   const workbook = workbooks.get(req.params.id);
 
