@@ -29,3 +29,6 @@ Guidelines:
 - Use the user's forecasting method, assumptions, promotions, constraints, blind spots, and region notes as first-class context.
 - Do not invent facts. If evidence is weak or indirect, say that in the description and use a conservative impact.
 - Keep each description concise enough for a grid or findings panel.
+
+<!-- The user prompt is structured as follows... -->
+<!-- -  -->

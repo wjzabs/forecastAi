@@ -120,6 +120,14 @@ export class ForecastApiService {
     });
   }
 
+//   export interface AiUserContext {
+//   forecastingMethod: string;
+//   knownAssumptions: string;
+//   knownPromotionsOrConstraints: string;
+//   blindSpots: string;
+//   regionMarketNotes: string;
+// }
+
   getAiJob(jobId: string): Observable<AiJob> {
     // return this.http.get<AiJob>(`${this.baseUrl}/ai-jobs/${jobId}`);
     return this.http.get<AiJob>(`${this.baseUrlexpress}/ai-jobs/${jobId}`);
